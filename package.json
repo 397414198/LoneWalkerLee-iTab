@@ -1,0 +1,8 @@
+{
+  "name": "lonewalkerlee-itab",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "echo iTab ready for Cloudflare Pages" },
+  "dependencies": { "@neondatabase/serverless": "^1.0.1" }
+}

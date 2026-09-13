@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LoneWalkerLee iTab</title><link rel="stylesheet" href="/style.css">
+</head><body>
+<div id="bg"></div><div class="noise"></div>
+<header><div class="brand"><i></i>LoneWalkerLee <span>iTab</span></div><button id="settingsBtn">⚙</button></header>
+<main>
+<section class="hero">
+<div id="date"></div><div id="clock">00:00</div><p>今天也要保持好心情 ✨</p>
+<form id="searchForm"><select id="engine"><option value="https://www.bing.com/search?q=">Bing</option><option value="https://www.baidu.com/s?wd=">百度</option><option value="https://www.google.com/search?q=">Google</option></select><input id="searchInput" placeholder="搜索一下，世界就在眼前"><button>⌕</button></form>
+</section>
+<section class="content"><div class="head"><div id="tabs"></div><button id="addBtn">＋ 添加网站</button></div><div id="cards"></div></section>
+</main>
+
+<div class="modal" id="modal"><div class="dialog"><div class="dialogHead"><h2 id="modalTitle">添加网站</h2><button id="closeModal">×</button></div>
+<label>网站名称<input id="siteTitle"></label><label>网站地址<input id="siteUrl" placeholder="https://example.com"></label>
+<label>图标 Emoji<input id="siteIcon" value="🔗"></label><label>分类<select id="siteCategory"></select></label>
+<div class="actions"><button id="cancelBtn">取消</button><button class="primary" id="saveBtn">保存</button></div></div></div>
+
+<aside id="drawer"><div class="dialogHead"><h2>iTab 设置</h2><button id="closeDrawer">×</button></div>
+<div class="block"><h3>背景图片</h3><input id="bgUrl" placeholder="图片 URL，可留空"><button class="primary full" id="saveBg">保存背景</button></div>
+<div class="block"><h3>管理员</h3><p>建议在 Cloudflare Secrets 中配置 ADMIN_PASSWORD。密码只保存在本浏览器本地。</p><button id="clearPassword">清除本机密码</button></div>
+<div class="block"><h3>关于</h3><p>LoneWalkerLee iTab 3.0<br>Cloudflare Pages + Neon PostgreSQL</p></div>
+</aside>
+<div id="toast"></div><script src="/app.js"></script>
+</body></html>
