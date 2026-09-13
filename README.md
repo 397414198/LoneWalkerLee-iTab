@@ -1,11 +1,20 @@
-# LoneWalkerLee iTab 4.0
+# LoneWalkerLee iTab 5.0
 
-Cloudflare Workers + Workers Static Assets + Neon PostgreSQL.
+Cloudflare Workers Static Assets + Neon PostgreSQL.
 
-Cloudflare Secrets:
-- DATABASE_URL = Neon connection string
-- ADMIN_PASSWORD = iTab 管理员密码
+## Features
+- Glassmorphism fullscreen homepage
+- Clock / Chinese date / calendar
+- Browser geolocation weather
+- Current weather + Monday-Sunday 7-day forecast
+- Search engine switch
+- Website categories and admin CRUD
+- Neon cloud data sync
+- Custom wallpaper URL
 
-Workers Builds:
-- Build command: npm run build
-- Deploy command: npx wrangler deploy
+## Cloudflare
+Keep these Secrets in the Worker project:
+- DATABASE_URL
+- ADMIN_PASSWORD
+
+Deploy command: `npx wrangler deploy`
