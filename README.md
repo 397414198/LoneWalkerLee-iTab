@@ -1,17 +1,11 @@
-# LoneWalkerLee iTab 3.0
+# LoneWalkerLee iTab 4.0
 
-Cloudflare Pages + Pages Functions + Neon PostgreSQL.
+Cloudflare Workers + Workers Static Assets + Neon PostgreSQL.
 
-## Cloudflare Pages
-Framework: None
-Build command: `npm run build`
-Build output directory: `public`
+Cloudflare Secrets:
+- DATABASE_URL = Neon connection string
+- ADMIN_PASSWORD = iTab 管理员密码
 
-Required Secret:
-- `DATABASE_URL`
-
-Recommended Secret:
-- `ADMIN_PASSWORD`
-
-Custom domain:
-`tab.lonewalkerlee.dpdns.org`
+Workers Builds:
+- Build command: npm run build
+- Deploy command: npx wrangler deploy
