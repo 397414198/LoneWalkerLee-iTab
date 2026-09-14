@@ -36,6 +36,41 @@ async function api(r,e){try{
  x=p.match(/^\/api\/categories\/(\d+)$/);if(x&&m==="DELETE"){await q`DELETE FROM categories WHERE id=${+x[1]}`;return j({ok:true})}
  if(p==="/api/settings"&&m==="POST"){const b=await r.json(),z=await q`INSERT INTO settings(id,background_url,search_engine,theme) VALUES(1,${b.background_url||""},${b.search_engine||"https://www.bing.com/search?q="},${b.theme||"glass"}) ON CONFLICT(id) DO UPDATE SET background_url=EXCLUDED.background_url,search_engine=EXCLUDED.search_engine,theme=EXCLUDED.theme,updated_at=CURRENT_TIMESTAMP RETURNING *`;return j(z[0])}
 
+ if(p==="/api/backup"&&m==="GET"){
+  const [categories,sites,settings,widgets]=await Promise.all([
+   q`SELECT * FROM categories ORDER BY sort_order,id`,
+   q`SELECT * FROM sites ORDER BY category_id NULLS LAST,sort_order,id`,
+   q`SELECT * FROM settings WHERE id=1`,
+   q`SELECT * FROM widgets ORDER BY sort_order,id`
+  ]);
+  return j({format:"LoneWalkerLee-iTab-backup",version:1,exportedAt:new Date().toISOString(),data:{categories,sites,settings:settings[0]||null,widgets}});
+ }
+ if(p==="/api/backup"&&m==="POST"){
+  const body=await r.json();
+  const d=body&&body.data;
+  if(body?.format!=="LoneWalkerLee-iTab-backup"||!d)return j({error:"无效的备份文件"},400);
+  if(!Array.isArray(d.categories)||!Array.isArray(d.sites)||!Array.isArray(d.widgets))return j({error:"备份文件结构不完整"},400);
+  if(d.categories.length>200||d.sites.length>2000||d.widgets.length>100)return j({error:"备份数据数量异常，拒绝导入"},400);
+  for(const c of d.categories){if(!Number.isInteger(+c.id)||!String(c.name||"").trim())return j({error:"分类数据无效"},400)}
+  for(const s of d.sites){if(!Number.isInteger(+s.id)||!String(s.title||"").trim()||!String(s.url||"").trim())return j({error:"网站数据无效"},400)}
+  for(const w of d.widgets){if(!Number.isInteger(+w.id)||!String(w.widget_key||"").trim()||!String(w.widget_title||"").trim())return j({error:"小组件数据无效"},400)}
+  const tx=[];
+  tx.push(q`DELETE FROM sites`);
+  tx.push(q`DELETE FROM widgets`);
+  tx.push(q`DELETE FROM categories`);
+  tx.push(q`DELETE FROM settings WHERE id=1`);
+  for(const c of d.categories) tx.push(q`INSERT INTO categories(id,name,sort_order,created_at) VALUES(${+c.id},${String(c.name)},${+c.sort_order||0},${c.created_at||new Date().toISOString()})`);
+  for(const s of d.sites) tx.push(q`INSERT INTO sites(id,title,url,icon,category_id,sort_order,created_at,updated_at) VALUES(${+s.id},${String(s.title)},${String(s.url)},${s.icon||"🔗"},${s.category_id==null?null:+s.category_id},${+s.sort_order||0},${s.created_at||new Date().toISOString()},${s.updated_at||new Date().toISOString()})`);
+  if(d.settings) tx.push(q`INSERT INTO settings(id,background_url,search_engine,theme,updated_at) VALUES(1,${d.settings.background_url||""},${d.settings.search_engine||"https://www.bing.com/search?q="},${d.settings.theme||"glass"},${d.settings.updated_at||new Date().toISOString()})`);
+  else tx.push(q`INSERT INTO settings(id) VALUES(1)`);
+  for(const w of d.widgets) tx.push(q`INSERT INTO widgets(id,widget_key,widget_title,grid_w,grid_h,sort_order,config,enabled,created_at,updated_at) VALUES(${+w.id},${String(w.widget_key)},${String(w.widget_title)},${Math.max(1,Math.min(3,+w.grid_w||1))},${Math.max(1,Math.min(3,+w.grid_h||1))},${+w.sort_order||0},${JSON.stringify(w.config||{})}::jsonb,${w.enabled!==false},${w.created_at||new Date().toISOString()},${w.updated_at||new Date().toISOString()})`);
+  tx.push(q`SELECT setval(pg_get_serial_sequence('categories','id'),COALESCE((SELECT MAX(id) FROM categories),1),EXISTS(SELECT 1 FROM categories))`);
+  tx.push(q`SELECT setval(pg_get_serial_sequence('sites','id'),COALESCE((SELECT MAX(id) FROM sites),1),EXISTS(SELECT 1 FROM sites))`);
+  tx.push(q`SELECT setval(pg_get_serial_sequence('widgets','id'),COALESCE((SELECT MAX(id) FROM widgets),1),EXISTS(SELECT 1 FROM widgets))`);
+  await q.transaction(tx);
+  return j({ok:true,counts:{categories:d.categories.length,sites:d.sites.length,widgets:d.widgets.length}});
+ }
+
  if(p==="/api/widgets"&&m==="POST"){
   const b=await r.json();if(!b.widget_key||!b.widget_title)return j({error:"组件信息不完整"},400);
   const z=await q`INSERT INTO widgets(widget_key,widget_title,grid_w,grid_h,sort_order,config,enabled) VALUES(${b.widget_key},${b.widget_title},${Math.max(1,Math.min(3,+b.grid_w||1))},${Math.max(1,Math.min(3,+b.grid_h||1))},${+b.sort_order||0},${JSON.stringify(b.config||{})}::jsonb,TRUE) RETURNING *`;return j(z[0],201);
