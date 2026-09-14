@@ -6,7 +6,9 @@ const admin=(r,e)=>!!e.ADMIN_PASSWORD&&r.headers.get("x-admin-password")===e.ADM
 async function init(e){
  const q=db(e);
  await q`CREATE TABLE IF NOT EXISTS categories(id SERIAL PRIMARY KEY,name VARCHAR(50) NOT NULL,sort_order INTEGER DEFAULT 0,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
- await q`CREATE TABLE IF NOT EXISTS sites(id SERIAL PRIMARY KEY,title VARCHAR(100) NOT NULL,url TEXT NOT NULL,icon TEXT DEFAULT '🔗',category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,sort_order INTEGER DEFAULT 0,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
+ await q`CREATE TABLE IF NOT EXISTS site_folders(id SERIAL PRIMARY KEY,name VARCHAR(50) NOT NULL,sort_order INTEGER DEFAULT 0,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
+ await q`CREATE TABLE IF NOT EXISTS sites(id SERIAL PRIMARY KEY,title VARCHAR(100) NOT NULL,url TEXT NOT NULL,icon TEXT DEFAULT '🔗',category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,folder_id INTEGER REFERENCES site_folders(id) ON DELETE SET NULL,sort_order INTEGER DEFAULT 0,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
+ await q`ALTER TABLE sites ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES site_folders(id) ON DELETE SET NULL`;
  await q`CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY DEFAULT 1,background_url TEXT DEFAULT '',search_engine TEXT DEFAULT 'https://www.bing.com/search?q=',theme VARCHAR(30) DEFAULT 'glass',updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
  await q`CREATE TABLE IF NOT EXISTS widgets(id SERIAL PRIMARY KEY,widget_key VARCHAR(50) NOT NULL,widget_title VARCHAR(100) NOT NULL,grid_w INTEGER NOT NULL DEFAULT 1,grid_h INTEGER NOT NULL DEFAULT 1,sort_order INTEGER NOT NULL DEFAULT 0,config JSONB NOT NULL DEFAULT '{}'::jsonb,enabled BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`;
  const c=await q`SELECT COUNT(*)::int n FROM categories`;if(!c[0].n)await q`INSERT INTO categories(name,sort_order) VALUES('常用',1),('AI',2),('工具',3),('娱乐',4),('工作',5)`;
@@ -41,50 +43,59 @@ async function api(r,e){try{
  await init(e);const q=db(e),u=new URL(r.url),p=u.pathname,m=r.method;
  if(p==="/api/hot"&&m==="GET")return hotApi(r);
  if(p==="/api/data"&&m==="GET"){
-  const [categories,sites,settings]=await Promise.all([
+  const [categories,sites,folders,settings]=await Promise.all([
    q`SELECT * FROM categories ORDER BY sort_order,id`,
-   q`SELECT * FROM sites ORDER BY category_id NULLS LAST,sort_order,id`,
+   q`SELECT * FROM sites ORDER BY category_id NULLS LAST,folder_id NULLS LAST,sort_order,id`,
+   q`SELECT * FROM site_folders ORDER BY sort_order,id`,
    q`SELECT * FROM settings WHERE id=1`
-  ]);return j({categories,sites,settings:settings[0]||null});
+  ]);return j({categories,sites,folders,settings:settings[0]||null});
  }
  if(p==="/api/widgets"&&m==="GET")return j(await q`SELECT * FROM widgets WHERE enabled=TRUE ORDER BY sort_order,id`);
  if(!admin(r,e)&&m!=="GET")return j({error:"需要管理员密码"},401);
 
- if(p==="/api/sites"&&m==="POST"){const b=await r.json();if(!b.title||!b.url)return j({error:"标题和网址不能为空"},400);const x=await q`INSERT INTO sites(title,url,icon,category_id,sort_order) VALUES(${b.title},${b.url},${b.icon||"🔗"},${b.category_id||null},${b.sort_order||0}) RETURNING *`;return j(x[0],201)}
+ if(p==="/api/sites"&&m==="POST"){const b=await r.json();if(!b.title||!b.url)return j({error:"标题和网址不能为空"},400);const x=await q`INSERT INTO sites(title,url,icon,category_id,folder_id,sort_order) VALUES(${b.title},${b.url},${b.icon||"🔗"},${b.category_id||null},${b.folder_id||null},${b.sort_order||0}) RETURNING *`;return j(x[0],201)}
  let x=p.match(/^\/api\/sites\/(\d+)$/);if(x&&m==="DELETE"){await q`DELETE FROM sites WHERE id=${+x[1]}`;return j({ok:true})}
- if(x&&m==="PUT"){const b=await r.json(),z=await q`UPDATE sites SET title=${b.title},url=${b.url},icon=${b.icon||"🔗"},category_id=${b.category_id||null},sort_order=${b.sort_order||0},updated_at=CURRENT_TIMESTAMP WHERE id=${+x[1]} RETURNING *`;return z[0]?j(z[0]):j({error:"网站不存在"},404)}
+ if(x&&m==="PUT"){const b=await r.json(),z=await q`UPDATE sites SET title=${b.title},url=${b.url},icon=${b.icon||"🔗"},category_id=${b.category_id||null},folder_id=${b.folder_id||null},sort_order=${b.sort_order||0},updated_at=CURRENT_TIMESTAMP WHERE id=${+x[1]} RETURNING *`;return z[0]?j(z[0]):j({error:"网站不存在"},404)}
+ if(p==="/api/folders"&&m==="POST"){const b=await r.json();if(!String(b.name||"").trim())return j({error:"文件夹名称不能为空"},400);const n=String(b.name).trim();if(n.length>50)return j({error:"文件夹名称不能超过50个字符"},400);const z=await q`INSERT INTO site_folders(name,sort_order) VALUES(${n},${(await q`SELECT COALESCE(MAX(sort_order),0)+1 n FROM site_folders`)[0].n}) RETURNING *`;return j(z[0],201)}
+ x=p.match(/^\/api\/folders\/(\d+)$/);if(x&&m==="DELETE"){await q`DELETE FROM site_folders WHERE id=${+x[1]}`;return j({ok:true})}
  if(p==="/api/categories"&&m==="POST"){const b=await r.json();if(!b.name)return j({error:"分类不能为空"},400);const z=await q`INSERT INTO categories(name,sort_order) VALUES(${b.name},${b.sort_order||0}) RETURNING *`;return j(z[0],201)}
  x=p.match(/^\/api\/categories\/(\d+)$/);if(x&&m==="DELETE"){await q`DELETE FROM categories WHERE id=${+x[1]}`;return j({ok:true})}
  if(p==="/api/settings"&&m==="POST"){const b=await r.json(),z=await q`INSERT INTO settings(id,background_url,search_engine,theme) VALUES(1,${b.background_url||""},${b.search_engine||"https://www.bing.com/search?q="},${b.theme||"glass"}) ON CONFLICT(id) DO UPDATE SET background_url=EXCLUDED.background_url,search_engine=EXCLUDED.search_engine,theme=EXCLUDED.theme,updated_at=CURRENT_TIMESTAMP RETURNING *`;return j(z[0])}
 
  if(p==="/api/backup"&&m==="GET"){
-  const [categories,sites,settings,widgets]=await Promise.all([
+  const [categories,sites,folders,settings,widgets]=await Promise.all([
    q`SELECT * FROM categories ORDER BY sort_order,id`,
-   q`SELECT * FROM sites ORDER BY category_id NULLS LAST,sort_order,id`,
+   q`SELECT * FROM sites ORDER BY category_id NULLS LAST,folder_id NULLS LAST,sort_order,id`,
+   q`SELECT * FROM site_folders ORDER BY sort_order,id`,
    q`SELECT * FROM settings WHERE id=1`,
    q`SELECT * FROM widgets ORDER BY sort_order,id`
   ]);
-  return j({format:"LoneWalkerLee-iTab-backup",version:1,exportedAt:new Date().toISOString(),data:{categories,sites,settings:settings[0]||null,widgets}});
+  return j({format:"LoneWalkerLee-iTab-backup",version:2,exportedAt:new Date().toISOString(),data:{categories,sites,folders,settings:settings[0]||null,widgets}});
  }
  if(p==="/api/backup"&&m==="POST"){
   const body=await r.json();
   const d=body&&body.data;
   if(body?.format!=="LoneWalkerLee-iTab-backup"||!d)return j({error:"无效的备份文件"},400);
   if(!Array.isArray(d.categories)||!Array.isArray(d.sites)||!Array.isArray(d.widgets))return j({error:"备份文件结构不完整"},400);
+  const folders=Array.isArray(d.folders)?d.folders:[]; if(folders.length>200)return j({error:"文件夹数量异常，拒绝导入"},400);
   if(d.categories.length>200||d.sites.length>2000||d.widgets.length>100)return j({error:"备份数据数量异常，拒绝导入"},400);
   for(const c of d.categories){if(!Number.isInteger(+c.id)||!String(c.name||"").trim())return j({error:"分类数据无效"},400)}
+  for(const f of folders){if(!Number.isInteger(+f.id)||!String(f.name||"").trim())return j({error:"文件夹数据无效"},400)}
   for(const s of d.sites){if(!Number.isInteger(+s.id)||!String(s.title||"").trim()||!String(s.url||"").trim())return j({error:"网站数据无效"},400)}
   for(const w of d.widgets){if(!Number.isInteger(+w.id)||!String(w.widget_key||"").trim()||!String(w.widget_title||"").trim())return j({error:"小组件数据无效"},400)}
   const tx=[];
   tx.push(q`DELETE FROM sites`);
   tx.push(q`DELETE FROM widgets`);
+  tx.push(q`DELETE FROM site_folders`);
   tx.push(q`DELETE FROM categories`);
   tx.push(q`DELETE FROM settings WHERE id=1`);
   for(const c of d.categories) tx.push(q`INSERT INTO categories(id,name,sort_order,created_at) VALUES(${+c.id},${String(c.name)},${+c.sort_order||0},${c.created_at||new Date().toISOString()})`);
-  for(const s of d.sites) tx.push(q`INSERT INTO sites(id,title,url,icon,category_id,sort_order,created_at,updated_at) VALUES(${+s.id},${String(s.title)},${String(s.url)},${s.icon||"🔗"},${s.category_id==null?null:+s.category_id},${+s.sort_order||0},${s.created_at||new Date().toISOString()},${s.updated_at||new Date().toISOString()})`);
+  for(const f of folders) tx.push(q`INSERT INTO site_folders(id,name,sort_order,created_at,updated_at) VALUES(${+f.id},${String(f.name)},${+f.sort_order||0},${f.created_at||new Date().toISOString()},${f.updated_at||new Date().toISOString()})`);
+  for(const s of d.sites) tx.push(q`INSERT INTO sites(id,title,url,icon,category_id,folder_id,sort_order,created_at,updated_at) VALUES(${+s.id},${String(s.title)},${String(s.url)},${s.icon||"🔗"},${s.category_id==null?null:+s.category_id},${s.folder_id==null?null:+s.folder_id},${+s.sort_order||0},${s.created_at||new Date().toISOString()},${s.updated_at||new Date().toISOString()})`);
   if(d.settings) tx.push(q`INSERT INTO settings(id,background_url,search_engine,theme,updated_at) VALUES(1,${d.settings.background_url||""},${d.settings.search_engine||"https://www.bing.com/search?q="},${d.settings.theme||"glass"},${d.settings.updated_at||new Date().toISOString()})`);
   else tx.push(q`INSERT INTO settings(id) VALUES(1)`);
   for(const w of d.widgets) tx.push(q`INSERT INTO widgets(id,widget_key,widget_title,grid_w,grid_h,sort_order,config,enabled,created_at,updated_at) VALUES(${+w.id},${String(w.widget_key)},${String(w.widget_title)},${Math.max(1,Math.min(3,+w.grid_w||1))},${Math.max(1,Math.min(3,+w.grid_h||1))},${+w.sort_order||0},${JSON.stringify(w.config||{})}::jsonb,${w.enabled!==false},${w.created_at||new Date().toISOString()},${w.updated_at||new Date().toISOString()})`);
+  tx.push(q`SELECT setval(pg_get_serial_sequence('site_folders','id'),COALESCE((SELECT MAX(id) FROM site_folders),1),EXISTS(SELECT 1 FROM site_folders))`);
   tx.push(q`SELECT setval(pg_get_serial_sequence('categories','id'),COALESCE((SELECT MAX(id) FROM categories),1),EXISTS(SELECT 1 FROM categories))`);
   tx.push(q`SELECT setval(pg_get_serial_sequence('sites','id'),COALESCE((SELECT MAX(id) FROM sites),1),EXISTS(SELECT 1 FROM sites))`);
   tx.push(q`SELECT setval(pg_get_serial_sequence('widgets','id'),COALESCE((SELECT MAX(id) FROM widgets),1),EXISTS(SELECT 1 FROM widgets))`);
