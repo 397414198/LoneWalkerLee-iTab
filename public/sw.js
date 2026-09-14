@@ -1,0 +1,5 @@
+const CACHE_NAME="lonewalkerlee-itab-5.5";
+const APP_SHELL=["/","/index.html","/app.js","/backup.js","/style.css","/sw.js"];
+self.addEventListener("install",event=>{event.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(APP_SHELL)).then(()=>self.skipWaiting()))});
+self.addEventListener("activate",event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith("lonewalkerlee-itab-")&&k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener("fetch",event=>{const r=event.request;const u=new URL(r.url);if(r.method!=="GET")return;if(u.origin!==self.location.origin)return;if(u.pathname.startsWith("/api/")){event.respondWith(fetch(r).then(res=>{if(res.ok){const copy=res.clone();caches.open(CACHE_NAME).then(c=>c.put(r,copy))}return res}).catch(()=>caches.match(r)));return}event.respondWith(fetch(r).then(res=>{if(res.ok&&res.type==="basic"){const copy=res.clone();caches.open(CACHE_NAME).then(c=>c.put(r,copy))}return res}).catch(()=>caches.match(r).then(x=>x||caches.match("/index.html"))))});

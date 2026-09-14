@@ -26,3 +26,7 @@ Deploy command: `npx wrangler deploy`
 - 管理员可使用“✨ 自动补全图标”批量为旧网站生成 favicon。
 - 自动图标使用 DuckDuckGo favicon 服务，无需 API Key；图标加载失败时自动回退为 🔗。
 - 不修改数据库结构，继续复用 sites.icon 字段。
+
+
+## 5.6 小组件扩展
+新增待办、番茄钟、倒计时、世界时钟、发薪日、纪念日 6 个组件；继续使用现有 widgets 表，无需新增数据库表。
