@@ -3,6 +3,7 @@ let S={categories:[],sites:[],settings:null,widgets:[],admin:null,cat:null};
 window.S=S;
 const esc=s=>String(s??"").replace(/[&<>"']/g,x=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[x]));
 async function api(p,o={}){o.headers={"content-type":"application/json",...(o.headers||{})};if(S.admin)o.headers["x-admin-password"]=S.admin;let r=await fetch(p,o),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"请求失败");return d}
+window.api=api;
 function requireAdmin(){if(S.admin)return true;let p=prompt("请输入管理员密码");if(!p)return false;S.admin=p;return true}
 
 const W={0:["☀️","晴"],1:["🌤️","少云"],2:["⛅","多云"],3:["☁️","阴"],45:["🌫️","雾"],48:["🌫️","雾凇"],51:["🌦️","毛毛雨"],53:["🌦️","毛毛雨"],55:["🌧️","毛毛雨"],61:["🌦️","小雨"],63:["🌧️","中雨"],65:["🌧️","大雨"],71:["🌨️","小雪"],73:["🌨️","中雪"],75:["❄️","大雪"],80:["🌦️","阵雨"],81:["🌧️","阵雨"],82:["⛈️","强阵雨"],95:["⛈️","雷雨"],96:["⛈️","雷雨伴冰雹"],99:["⛈️","雷雨伴冰雹"]};
