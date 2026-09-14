@@ -109,7 +109,43 @@ async function saveWidget(w,reload=true){saveLocal();if(!S.admin)return;if(!w.id
 window.resizeWidget=async(id,delta)=>{if(!requireAdmin())return;let w=S.widgets.find(x=>x.id===id);if(!w)return;let sizes=WidgetRegistry[w.widget_key]?.sizes||[[1,1],[2,1],[2,2]];let idx=sizes.findIndex(x=>x[0]===w.grid_w&&x[1]===w.grid_h);idx=Math.max(0,Math.min(sizes.length-1,idx+delta));w.grid_w=sizes[idx][0];w.grid_h=sizes[idx][1];await saveWidget(w)};
 window.removeWidget=async id=>{if(!requireAdmin())return;if(!confirm("删除这个小组件？"))return;try{await api("/api/widgets/"+id,{method:"DELETE"});S.widgets=S.widgets.filter(x=>x.id!==id);saveLocal();renderWidgets()}catch(e){alert(e.message)}};
 function bindDragResize(){document.querySelectorAll(".drag-handle").forEach(handle=>{handle.onpointerdown=e=>startDrag(e,handle.closest(".widget"))});document.querySelectorAll(".resize-handle").forEach(h=>{h.onpointerdown=e=>startResize(e,h.closest(".widget"))})}
-function startDrag(e,el){if(!requireAdmin())return;e.preventDefault();el.setPointerCapture?.(e.pointerId);let grid=el.parentElement;el.classList.add("dragging");let move=ev=>{ev.preventDefault();let els=[...grid.querySelectorAll(".widget:not(.dragging)")];let target=null,best=Infinity;for(let x of els){let r=x.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=(ev.clientX-cx)/Math.max(1,r.width),dy=(ev.clientY-cy)/Math.max(1,r.height);let score=Math.abs(dx)+Math.abs(dy);if(score<best){best=score;target=x}}if(target){let r=target.getBoundingClientRect();let before=(ev.clientY<r.top+r.height/2)||(Math.abs(ev.clientY-(r.top+r.height/2))<r.height*.15&&ev.clientX<r.left+r.width/2);grid.insertBefore(el,before?target:target.nextSibling)}};let up=async()=>{el.classList.remove("dragging");document.removeEventListener("pointermove",move);document.removeEventListener("pointerup",up);let ids=[...grid.children].map(x=>+x.dataset.id),items=ids.map((id,i)=>({id,sort_order:i+1}));S.widgets.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));saveLocal();try{await api("/api/widgets/reorder",{method:"POST",body:JSON.stringify({items})})}catch(x){alert(x.message)}};document.addEventListener("pointermove",move,{passive:false});document.addEventListener("pointerup",up,{once:true})}
+function startDrag(e,el){
+  if(e.button!==undefined&&e.button!==0)return;
+  if(!requireAdmin())return;
+  e.preventDefault();e.stopPropagation();
+  let grid=el.parentElement,startX=e.clientX,startY=e.clientY,moved=false;
+  const move=ev=>{
+    ev.preventDefault();
+    if(!moved && Math.hypot(ev.clientX-startX,ev.clientY-startY)<5)return;
+    moved=true;el.classList.add("dragging");
+    let els=[...grid.querySelectorAll(".widget:not(.dragging)")],target=null,best=Infinity;
+    for(let x of els){
+      let r=x.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+      let dx=(ev.clientX-cx)/Math.max(1,r.width),dy=(ev.clientY-cy)/Math.max(1,r.height);
+      let score=dx*dx+dy*dy;
+      if(score<best){best=score;target=x}
+    }
+    if(target){
+      let r=target.getBoundingClientRect();
+      let before=(ev.clientY<r.top+r.height/2)||(Math.abs(ev.clientY-(r.top+r.height/2))<r.height*.18&&ev.clientX<r.left+r.width/2);
+      let ref=before?target:target.nextElementSibling;
+      if(ref!==el)grid.insertBefore(el,ref||null);
+    }
+  };
+  const finish=async()=>{
+    document.removeEventListener("pointermove",move);
+    document.removeEventListener("pointerup",finish);
+    document.removeEventListener("pointercancel",finish);
+    el.classList.remove("dragging");
+    if(!moved)return;
+    let ids=[...grid.querySelectorAll(".widget")].map(x=>+x.dataset.id),items=ids.map((id,i)=>({id,sort_order:i+1}));
+    S.widgets.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id));saveLocal();
+    try{await api("/api/widgets/reorder",{method:"POST",body:JSON.stringify({items})})}catch(x){alert(x.message)}
+  };
+  document.addEventListener("pointermove",move,{passive:false});
+  document.addEventListener("pointerup",finish,{once:true});
+  document.addEventListener("pointercancel",finish,{once:true});
+}
 function startResize(e,el){if(!requireAdmin())return;e.preventDefault();el.setPointerCapture?.(e.pointerId);let w=S.widgets.find(x=>x.id==el.dataset.id),startX=e.clientX,startY=e.clientY,sw=w.grid_w,sh=w.grid_h,meta=WidgetRegistry[w.widget_key]||{sizes:[[1,1],[2,1],[2,2],[3,2]]},move=ev=>{ev.preventDefault();let grid=el.parentElement,gr=grid.getBoundingClientRect(),gap=parseFloat(getComputedStyle(grid).gap)||0,cols=getComputedStyle(grid).gridTemplateColumns.split(" ").length||1,cellW=(gr.width-gap*(cols-1))/cols,cellH=parseFloat(getComputedStyle(grid).gridAutoRows)||100;let dx=Math.round((ev.clientX-startX)/Math.max(1,cellW+gap)),dy=Math.round((ev.clientY-startY)/Math.max(1,cellH+gap));let nw=Math.max(1,Math.min(3,sw+dx)),nh=Math.max(1,Math.min(3,sh+dy));let ok=meta.sizes.some(s=>s[0]===nw&&s[1]===nh);if(ok){el.className=el.className.replace(/grid-\d-\d/,`grid-${nw}-${nh}`);el.style.setProperty("--gw",nw);el.style.setProperty("--gh",nh);el.dataset.tempSize=`${nw}-${nh}`}},up=async()=>{document.removeEventListener("pointermove",move);let size=el.dataset.tempSize;if(size){let [nw,nh]=size.split("-").map(Number);w.grid_w=nw;w.grid_h=nh;delete el.dataset.tempSize;await saveWidget(w)}document.removeEventListener("pointerup",up)};document.addEventListener("pointermove",move,{passive:false});document.addEventListener("pointerup",up,{once:true})}
 
 function widgetChoices(){$("#widgetChoices").innerHTML=Object.entries(WidgetRegistry).map(([key,v])=>`<button class="widgetChoice" type="button" onclick="addWidget('${key}')"><span>${v.icon}</span><div><b>${v.title}</b><small>${v.desc}</small></div></button>`).join("")}
