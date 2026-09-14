@@ -77,15 +77,24 @@ function renderWorldClockWidget(el,w){let zones=[['北京','Asia/Shanghai'],['�
 function renderPaydayWidget(el,w){let c=Object.assign({day:10},w.config||{}),now=new Date(),d=new Date(now.getFullYear(),now.getMonth(),Math.max(1,Math.min(28,+c.day||10)));if(now>=d)d=new Date(now.getFullYear(),now.getMonth()+1,Math.max(1,Math.min(28,+c.day||10)));let days=Math.ceil((d-now)/86400000);el.querySelector('.widget-body').innerHTML=`<div class="payBig">${days}<small>天</small></div><div class="muted">距离下次发薪日 · ${d.toLocaleDateString('zh-CN')}</div>`}
 async function renderHotSearchWidget(el,w){
   const c=Object.assign({source:"baidu"},w.config||{}), names={baidu:"百度",weibo:"微博",douyin:"抖音",zhihu:"知乎"};
-  el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${Object.entries(names).map(([k,v])=>`<button class="hotTab ${c.source===k?'active':''}" onclick="changeHotSource(${w.id},'${k}')">${v}</button>`).join("")}</div><div class="loading">正在加载热搜…</div>`;
+  if(el.dataset.hotSource===c.source && el.dataset.hotLoaded==="1") return;
+  if(el.dataset.hotLoading==="1" && el.dataset.hotSource===c.source) return;
+  el.dataset.hotSource=c.source; el.dataset.hotLoading="1";
+  const tabs=()=>Object.entries(names).map(([k,v])=>`<button class="hotTab ${c.source===k?'active':''}" onclick="changeHotSource(${w.id},'${k}')">${v}</button>`).join("");
+  el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${tabs()}</div><div class="loading">正在加载热搜…</div>`;
   try{
-    const d=await api(`/api/hot?source=${encodeURIComponent(c.source)}`);
-    const items=Array.isArray(d.items)?d.items:[];
-    const list=items.slice(0,8).map((x,i)=>`<a class="hotItem" href="${esc(x.url||d.home||'#')}" target="_blank" rel="noopener"><b>${i+1}</b><span>${esc(x.title||"未命名")}</span>${x.hot?`<em>${esc(String(x.hot))}</em>`:""}</a>`).join("");
-    el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${Object.entries(names).map(([k,v])=>`<button class="hotTab ${c.source===k?'active':''}" onclick="changeHotSource(${w.id},'${k}')">${v}</button>`).join("")}</div>${list||`<div class="empty">暂时没有拿到实时榜单<br><a class="hotFallback" href="${esc(d.home||'#')}" target="_blank" rel="noopener">打开${names[c.source]||"热榜"}</a></div>`}<div class="muted hotFoot">数据来自公开热榜接口 · 可点击标题查看原榜单</div>`;
-  }catch(e){el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${Object.entries(names).map(([k,v])=>`<button class="hotTab ${c.source===k?'active':''}" onclick="changeHotSource(${w.id},'${k}')">${v}</button>`).join("")}</div><div class="empty">热榜暂时不可用<br><span class="muted">可以点击上方平台直接查看</span></div>`}
+    const d=await api(`/api/hot?source=${encodeURIComponent(c.source)}`), items=Array.isArray(d.items)?d.items:[];
+    if(!document.body.contains(el) || el.dataset.hotSource!==c.source) return;
+    const list=items.slice(0,10).map((x,i)=>`<a class="hotItem" href="${esc(x.url||d.home||'#')}" target="_blank" rel="noopener"><b>${i+1}</b><span>${esc(x.title||"未命名")}</span>${x.hot?`<em>${esc(String(x.hot))}</em>`:""}</a>`).join("");
+    el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${tabs()}</div>${list||`<div class="empty">暂时没有拿到实时榜单<br><a class="hotFallback" href="${esc(d.home||'#')}" target="_blank" rel="noopener">打开${names[c.source]||"热榜"}</a></div>`}<div class="muted hotFoot">数据每次打开组件时获取 · ${esc(d.updatedAt||'')}</div>`;
+    el.dataset.hotLoaded="1";
+  }catch(e){
+    if(!document.body.contains(el) || el.dataset.hotSource!==c.source) return;
+    el.querySelector(".widget-body").innerHTML=`<div class="hotTabs">${tabs()}</div><div class="empty">热榜暂时不可用<br><a class="hotFallback" href="${esc(d?.home||'#')}" target="_blank" rel="noopener">打开${names[c.source]||"热榜"}</a></div>`;
+    el.dataset.hotLoaded="1";
+  }finally{el.dataset.hotLoading="0";}
 }
-window.changeHotSource=async(id,source)=>{if(!requireAdmin())return;let w=S.widgets.find(x=>x.id===id);if(!w)return;w.config=Object.assign({},w.config,{source});await saveWidget(w,false);let el=document.querySelector(`.widget[data-id="${id}"]`);if(el)renderHotSearchWidget(el,w)};
+window.changeHotSource=async(id,source)=>{if(!requireAdmin())return;let w=S.widgets.find(x=>x.id===id);if(!w)return;w.config=Object.assign({},w.config,{source});await saveWidget(w,false);let el=document.querySelector(`.widget[data-id="${id}"]`);if(el){delete el.dataset.hotLoaded;delete el.dataset.hotLoading;renderHotSearchWidget(el,w)}};
 
 function renderAnniversaryWidget(el,w){let c=Object.assign({title:'我们的纪念日',date:''},w.config||{}),d=c.date?new Date(c.date):null,days=d?Math.max(0,Math.floor((Date.now()-d.getTime())/86400000)):null;el.querySelector('.widget-body').innerHTML=`<div class="countTitle">${esc(c.title)}</div><div class="payBig">${days===null?'—':days}<small>${days===null?'':'天'}</small></div><div class="muted">${d?'已经走过的日子':'点击 ⚙️ 设置日期'}</div>`}
 
