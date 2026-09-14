@@ -7,3 +7,16 @@
 
 .site .ico{height:48px;display:flex;align-items:center;gap:8px}.site-icon{width:42px;height:42px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.08);padding:4px}.iconFallback{display:none;font-size:35px}.iconEmoji{font-size:35px}.iconTools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0 4px}.checkLine{display:flex!important;align-items:center;gap:5px;margin:0!important;font-size:12px!important}.checkLine input{display:inline-block!important;width:auto!important;margin:0!important}.iconPreview{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:rgba(255,255,255,.08);overflow:hidden;font-size:24px}.iconPreview img{width:34px;height:34px;object-fit:contain}.actions{flex-wrap:wrap}
 @media(max-width:600px){.iconTools{align-items:flex-start}.iconTools .checkLine{width:100%}}
+
+.searchTools{display:flex;align-items:center;justify-content:center;gap:8px;margin:10px auto 0;flex-wrap:wrap}
+.searchTools button{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:inherit;border-radius:999px;padding:7px 12px;cursor:pointer;backdrop-filter:blur(10px)}
+.searchTools button:hover{background:rgba(255,255,255,.14)}
+.searchHint{font-size:12px;opacity:.55}
+.searchHistory{display:none;width:min(760px,92vw);margin:8px auto 0;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.72);backdrop-filter:blur(18px);border-radius:16px;padding:8px;box-shadow:0 18px 50px rgba(0,0,0,.2)}
+.searchHistory.show{display:block}
+.historyTitle{font-size:12px;opacity:.55;padding:4px 8px 7px}
+.historyItem{width:100%;display:grid;grid-template-columns:24px 1fr 24px;text-align:left;align-items:center;gap:4px;border:0;background:transparent;color:inherit;padding:9px 8px;border-radius:10px;cursor:pointer}
+.historyItem:hover{background:rgba(255,255,255,.08)}
+.historyItem span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.historyX{opacity:.45;text-align:center;font-size:18px}
+@media(max-width:640px){.searchTools{margin-top:8px}.searchHint{width:100%;text-align:center}.searchHistory{width:calc(100vw - 28px)}}

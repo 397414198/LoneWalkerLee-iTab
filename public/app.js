@@ -64,7 +64,17 @@ function tick(){let d=new Date(),p=n=>String(n).padStart(2,"0");$("#clock").text
 window.autoFillFavicons=async()=>{if(!requireAdmin())return;let list=S.sites.filter(s=>!isIconUrl(s.icon));if(!list.length){alert("目前没有需要补全的网站图标。\n已有图片 URL 的图标不会被覆盖。");return}if(!confirm(`将为 ${list.length} 个网站生成自动 favicon 图标地址，已有图片 URL 不会修改。\n继续吗？`))return;let ok=0;for(let site of list){let f=faviconUrl(site.url);if(!f)continue;try{let saved=await api("/api/sites/"+site.id,{method:"PUT",body:JSON.stringify({...site,icon:f})});Object.assign(site,saved);ok++}catch(e){console.warn("favicon 更新失败",site,e)}}renderSites();alert(`完成：${ok}/${list.length} 个网站已启用自动图标。`)};
 function updateIconPreview(){let box=$("#iconPreview"),v=$("#icon").value.trim();if(!v){box.innerHTML="<span>🔗</span>";return}if(isIconUrl(v))box.innerHTML=`<img src="${esc(v)}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"><span style="display:none">🔗</span>`;else box.innerHTML=`<span>${esc(v)}</span>`}
 window.useAutoFavicon=()=>{let f=faviconUrl($("#url").value.trim());if(!f){alert("请先输入正确的网站网址。比如：https://www.baidu.com");return}$("#icon").value=f;$("#autoIcon").checked=true;updateIconPreview()};
-$("#search").onsubmit=e=>{e.preventDefault();let q=$("#query").value.trim();if(q)location.href=$("#engine").value+encodeURIComponent(q)};
+const SEARCH_HISTORY_KEY="itab_search_history";
+function getSearchHistory(){try{return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY)||"[]")}catch{return[]}}
+function saveSearchHistory(q){q=String(q||"").trim();if(!q)return;let a=getSearchHistory().filter(x=>x!==q);a.unshift(q);localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(a.slice(0,12)));renderSearchHistory()}
+function renderSearchHistory(){let box=$("#searchHistory"),a=getSearchHistory();if(!a.length){box.innerHTML="";box.classList.remove("show");return}box.innerHTML=`<div class="historyTitle">最近搜索</div>`+a.map((x,i)=>`<button type="button" class="historyItem" data-q="${esc(x)}"><span>🕘</span><span>${esc(x)}</span><span class="historyX" data-i="${i}">×</span></button>`).join("");box.querySelectorAll(".historyItem").forEach(b=>b.onclick=()=>{let q=b.dataset.q;$("#query").value=q;$("#query").focus()});box.querySelectorAll(".historyX").forEach(x=>x.onclick=e=>{e.stopPropagation();let a=getSearchHistory();a.splice(+x.dataset.i,1);localStorage.setItem(SEARCH_HISTORY_KEY,JSON.stringify(a));renderSearchHistory()})}
+function doSearch(q){q=String(q||"").trim();if(!q)return;saveSearchHistory(q);location.href=$("#engine").value+encodeURIComponent(q)}
+$("#search").onsubmit=e=>{e.preventDefault();doSearch($("#query").value)};
+$("#query").onfocus=()=>renderSearchHistory();
+$("#clearHistoryBtn").onclick=()=>{localStorage.removeItem(SEARCH_HISTORY_KEY);renderSearchHistory();$("#query").focus()};
+$("#translateBtn").onclick=()=>{let q=$("#query").value.trim();let url="https://translate.google.com/?sl=auto&tl=zh-CN"+(q?"&text="+encodeURIComponent(q):"");window.open(url,"_blank")};
+document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("#query").focus();$("#query").select()}});
+renderSearchHistory();
 $("#admin").onclick=()=>{if(requireAdmin())alert("管理员模式已开启")};
 $("#add").onclick=()=>{if(!requireAdmin())return;$("#dt").textContent="添加网站";$("#sid").value="";$("#title").value="";$("#url").value="";$("#icon").value="";$("#autoIcon").checked=true;updateIconPreview();dlg.showModal()};
 $("#icon").oninput=()=>{$("#autoIcon").checked=false;updateIconPreview()};
