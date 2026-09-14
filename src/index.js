@@ -17,8 +17,33 @@ async function init(e){
  ('work','下班倒计时',1,1,3,'{"workStart":"08:30","workEnd":"17:30","dailySalary":300}'::jsonb)`;
 }
 
+
+async function hotApi(r){
+ const source=new URL(r.url).searchParams.get("source")||"baidu";
+ const cfg={
+  baidu:{url:"https://www.baidu.com/s?wd=",home:"https://top.baidu.com/board?tab=realtime"},
+  weibo:{url:"https://s.weibo.com/weibo?q=",home:"https://s.weibo.com/top/summary"},
+  douyin:{url:"https://www.douyin.com/search/",home:"https://www.douyin.com/hot"},
+  zhihu:{url:"https://www.zhihu.com/search?type=content&q=",home:"https://www.zhihu.com/hot"}
+ }[source]||null;
+ if(!cfg)return j({items:[],home:"https://top.baidu.com/board?tab=realtime"});
+ try{
+  let endpoint=source==="zhihu"?"https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=20":source==="weibo"?"https://weibo.com/ajax/side/hotSearch":source==="douyin"?"https://www.douyin.com/aweme/v1/web/hot/search/list/?device_platform=webapp":"https://top.baidu.com/api/board?platform=wise&tab=realtime";
+  let rr=await fetch(endpoint,{headers:{"user-agent":"Mozilla/5.0","accept":"application/json,text/plain,*/*"}});
+  if(!rr.ok)throw Error("upstream "+rr.status);
+  let text=await rr.text(),data;try{data=JSON.parse(text)}catch{data=null}
+  let items=[];
+  if(source==="zhihu"&&data?.data)items=data.data.map(x=>({title:x.target?.title||x.title||"",hot:x.detail_text||"",url:x.target?.url||cfg.home}));
+  else if(source==="weibo"&&data?.data?.realtime)items=data.data.realtime.map(x=>({title:x.word||x.note||"",hot:x.num||x.raw_hot||"",url:"https://s.weibo.com/weibo?q="+encodeURIComponent(x.word||"")}));
+  else if(source==="douyin"&&data?.data?.word_list)items=data.data.word_list.map(x=>({title:x.word||"",hot:x.hot_value||x.hot_value_str||"",url:"https://www.douyin.com/search/"+encodeURIComponent(x.word||"")}));
+  else if(source==="baidu"&&data?.data?.cards){let arr=data.data.cards.flatMap(x=>x.content||[]);items=arr.map(x=>({title:x.word||x.desc||"",hot:x.hotScore||x.hotTag||"",url:"https://www.baidu.com/s?wd="+encodeURIComponent(x.word||"")}));}
+  return j({source,items:items.filter(x=>x.title).slice(0,20),home:cfg.home});
+ }catch(e){return j({source,items:[],home:cfg.home,error:"热榜接口暂时不可用"})}
+}
+
 async function api(r,e){try{
  await init(e);const q=db(e),u=new URL(r.url),p=u.pathname,m=r.method;
+ if(p==="/api/hot"&&m==="GET")return hotApi(r);
  if(p==="/api/data"&&m==="GET"){
   const [categories,sites,settings]=await Promise.all([
    q`SELECT * FROM categories ORDER BY sort_order,id`,
