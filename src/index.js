@@ -20,13 +20,35 @@ async function init(e){
 }
 
 
+async function stockApi(r){
+ const u=new URL(r.url),raw=(u.searchParams.get("codes")||"s_sh000001,s_sz399001,s_sz399006,sh600519,sh601318").split(/[,\s]+/).filter(Boolean).slice(0,12);
+ const safe=raw.filter(x=>/^(?:s_)?(?:sh|sz)\d{6}$/.test(x));
+ if(!safe.length)return j({items:[]});
+ const url=`https://hq.sinajs.cn/list=${safe.join(",")}`;
+ const rr=await fetch(url,{headers:{"Referer":"https://finance.sina.com.cn/","User-Agent":"Mozilla/5.0"},cf:{cacheTtl:30,cacheEverything:true}});
+ if(!rr.ok)throw Error("行情源请求失败");
+ const text=await rr.text(),items=[];
+ for(const m of text.matchAll(/var\s+hq_str_([^=]+)="([^"]*)"/g)){
+   const code=m[1],a=m[2].split(","); if(!a[0])continue;
+   const isIdx=code.startsWith("s_"); const price=isIdx?a[1]:a[3]; const prev=isIdx?a[1]-a[2]:a[2];
+   const pct=isIdx?Number(a[3]):(Number(prev)?((Number(price)-Number(prev))/Number(prev)*100):0);
+   items.push({code,name:a[0],price:Number(price||0).toFixed(2),pct:Number(pct)||0});
+ }
+ return j({items});
+}
+
 async function hotApi(r){
  const source=new URL(r.url).searchParams.get("source")||"baidu";
  const cfg={
   baidu:{type:"baidu",home:"https://top.baidu.com/board?tab=realtime"},
   weibo:{type:"weibo",home:"https://s.weibo.com/top/summary"},
   douyin:{type:"douyin",home:"https://www.douyin.com/hot"},
-  zhihu:{type:"zhihu",home:"https://www.zhihu.com/hot"}
+  zhihu:{type:"zhihu",home:"https://www.zhihu.com/hot"},
+  bilibili:{type:"bilibili",home:"https://www.bilibili.com/v/popular/rank/all"},
+  toutiao:{type:"toutiao",home:"https://www.toutiao.com/hot-event/hot-board/"},
+  "36kr":{type:"36kr",home:"https://36kr.com/"},
+  hupu:{type:"hupu",home:"https://www.hupu.com/"},
+  "douban-movie":{type:"douban-movie",home:"https://movie.douban.com/"}
  }[source]||null;
  if(!cfg)return j({items:[],home:"https://top.baidu.com/board?tab=realtime"});
  const endpoint=`https://uapis.cn/api/v1/misc/hotboard?type=${encodeURIComponent(cfg.type)}`;
@@ -42,6 +64,7 @@ async function hotApi(r){
 async function api(r,e){try{
  await init(e);const q=db(e),u=new URL(r.url),p=u.pathname,m=r.method;
  if(p==="/api/hot"&&m==="GET")return hotApi(r);
+ if(p==="/api/stocks"&&m==="GET")return stockApi(r);
  if(p==="/api/data"&&m==="GET"){
   const [categories,sites,folders,settings]=await Promise.all([
    q`SELECT * FROM categories ORDER BY sort_order,id`,

@@ -25,8 +25,14 @@ const WidgetRegistry={
   worldclock:{title:"世界时钟",icon:"🌍",sizes:[[2,1],[2,2]],desc:"北京、东京、纽约、伦敦等时区"},
   payday:{title:"发薪日",icon:"💵",sizes:[[1,1],[2,1]],desc:"计算距离下次发薪还有多久"},
   anniversary:{title:"纪念日",icon:"❤️",sizes:[[1,1],[2,1]],desc:"记录重要日期与相识天数"},
-  hotsearch:{title:"热搜中心",icon:"🔥",sizes:[[2,1],[2,2],[3,2]],desc:"百度、微博、抖音、知乎热点"}
+  hotsearch:{title:"热搜中心",icon:"🔥",sizes:[[2,1],[2,2],[3,2]],desc:"百度、微博、抖音、知乎热点"},
+  infohub:{title:"信息中心",icon:"📰",sizes:[[2,2],[3,2],[3,3]],desc:"全网热点、新闻、科技、游戏与娱乐"},
+  stocks:{title:"股票中心",icon:"📈",sizes:[[2,2],[3,2],[3,3]],desc:"A股指数、自选股票与行情"},
+  entertainment:{title:"娱乐中心",icon:"🎬",sizes:[[2,2],[3,2],[3,3]],desc:"B站、影视、体育与短视频热点"},
+  myday:{title:"我的一天",icon:"🧠",sizes:[[2,2],[3,2],[3,3]],desc:"今日时间、待办、番茄、倒计时与快捷入口"}
 };
+const ThemeRegistry={glass:{name:"玻璃幻境",icon:"🧊",desc:"默认毛玻璃"},night:{name:"深夜黑曜",icon:"🌌",desc:"深色高对比"},aurora:{name:"极光",icon:"🌈",desc:"柔和渐变氛围"},ocean:{name:"深海",icon:"🌊",desc:"冷色沉浸"},minimal:{name:"极简",icon:"◻️",desc:"轻量低干扰"},cyber:{name:"赛博",icon:"⚡",desc:"高亮科技感"}};
+function applyTheme(t){document.documentElement.dataset.theme=ThemeRegistry[t]?t:"glass";}
 
 function cats(){let h=`<button class="${S.cat==null?'active':''}" onclick="filter(null)">全部</button>`;h+=S.categories.map(c=>`<button class="${S.cat===c.id?'active':''}" onclick="filter(${c.id})">${esc(c.name)}</button>`).join("");$("#cats").innerHTML=h;$("#category").innerHTML=S.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");renderFolderBar();renderFolderSelect()}
 function renderFolderSelect(){let el=$("#folder");if(!el)return;el.innerHTML=`<option value="">不放入文件夹</option>`+S.folders.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join("")}
@@ -118,10 +124,92 @@ async function renderHotSearchWidget(el,w){
 }
 window.changeHotSource=async(id,source)=>{if(!requireAdmin())return;let w=S.widgets.find(x=>x.id===id);if(!w)return;w.config=Object.assign({},w.config,{source});await saveWidget(w,false);let el=document.querySelector(`.widget[data-id="${id}"]`);if(el){delete el.dataset.hotLoaded;delete el.dataset.hotLoading;renderHotSearchWidget(el,w)}};
 
+async function renderInfoHubWidget(el,w){
+  const platforms={
+    all:["全网","baidu"],news:["新闻","toutiao"],tech:["科技","36kr"],video:["视频","bilibili"],game:["游戏","hupu"],movie:["影视","douban-movie"]
+  };
+  const labels=Object.fromEntries(Object.entries(platforms));
+  const getCache=()=>{try{return JSON.parse(el.dataset.infoCache||"{}")}catch{return {}}};
+  const setCache=x=>{el.dataset.infoCache=JSON.stringify(x)};
+  const renderTabs=(active)=>Object.entries(labels).map(([k,v])=>`<button class="hotTab ${active===k?'active':''}" onclick="infoHubSwitch(${w.id},'${k}')">${v[0]}</button>`).join("");
+  const sourceOf=k=>platforms[k][1];
+  const load=async(active="all",force=false)=>{
+    const cache=getCache(),source=sourceOf(active);
+    if(!force&&cache[source]){draw(active,cache[source]);return}
+    el.querySelector('.widget-body').innerHTML=`<div class="infoTabs">${renderTabs(active)}<button class="miniBtn infoRefresh" onclick="infoHubRefresh(${w.id})">↻</button></div><div class="loading">正在加载 ${labels[active][0]}…</div>`;
+    try{
+      const d=await api(`/api/hot?source=${encodeURIComponent(source)}`);
+      cache[source]=d;setCache(cache);draw(active,d);
+    }catch(e){draw(active,{items:[],home:'#',error:e.message})}
+  };
+  const draw=(active,d)=>{
+    const items=Array.isArray(d.items)?d.items.slice(0,12):[];
+    const list=items.map((x,i)=>`<a class="hotItem" href="${esc(x.url||d.home||'#')}" target="_blank" rel="noopener"><b>${i+1}</b><span>${esc(x.title||'未命名')}</span>${x.hot?`<em>${esc(String(x.hot))}</em>`:''}</a>`).join('');
+    el.querySelector('.widget-body').innerHTML=`<div class="infoTabs">${renderTabs(active)}<button class="miniBtn infoRefresh" onclick="infoHubRefresh(${w.id})">↻</button></div>${list||`<div class="empty">暂无数据<br><a class="hotFallback" href="${esc(d.home||'#')}" target="_blank" rel="noopener">打开${labels[active][0]}</a></div>`}<div class="muted hotFoot">${esc(d.updatedAt||'实时热榜')} · 数据来自公开热榜接口</div>`;
+  };
+  el._infoLoad=load;await load("all",false);
+}
+window.infoHubSwitch=async(id,key)=>{let w=S.widgets.find(x=>x.id===id),el=document.querySelector(`.widget[data-id="${id}"]`);if(w&&el?._infoLoad)await el._infoLoad(key,false)};
+window.infoHubRefresh=async id=>{let el=document.querySelector(`.widget[data-id="${id}"]`);if(!el?._infoLoad)return;el.dataset.infoCache='{}';await el._infoLoad('all',true)};
+
+async function renderEntertainmentWidget(el,w){
+  const tabs={bilibili:["B站","bilibili"],movie:["影视","douban-movie"],sport:["体育","hupu"],short:["短视频","douyin"]};
+  const labels=Object.fromEntries(Object.entries(tabs));
+  const cache=()=>{try{return JSON.parse(el.dataset.entCache||"{}")}catch{return {}}};
+  const draw=(key,d)=>{
+    const items=Array.isArray(d.items)?d.items.slice(0,10):[];
+    const list=items.map((x,i)=>`<a class="hotItem" href="${esc(x.url||d.home||'#')}" target="_blank" rel="noopener"><b>${i+1}</b><span>${esc(x.title||'未命名')}</span>${x.hot?`<em>${esc(String(x.hot))}</em>`:''}</a>`).join('');
+    const game=`<div class="entQuick"><span>🎮 想放松一下？</span><button class="miniBtn" onclick="entRandomGame()">随机小游戏</button></div>`;
+    el.querySelector('.widget-body').innerHTML=`<div class="infoTabs">${Object.entries(labels).map(([k,v])=>`<button class="hotTab ${key===k?'active':''}" onclick="entSwitch(${w.id},'${k}')">${v[0]}</button>`).join('')}<button class="miniBtn infoRefresh" onclick="entRefresh(${w.id})">↻</button></div>${list||`<div class="empty">暂无数据<br><a class="hotFallback" href="${esc(d.home||'#')}" target="_blank" rel="noopener">打开${labels[key][0]}</a></div>`}${game}<div class="muted hotFoot">${esc(d.updatedAt||'实时热榜')} · 娱乐信息来自公开热榜接口</div>`;
+  };
+  const load=async(key='bilibili',force=false)=>{
+    const c=cache(),src=tabs[key][1];
+    if(!force&&c[src]){draw(key,c[src]);return}
+    const body=el.querySelector('.widget-body');
+    body.innerHTML=`<div class="infoTabs">${Object.entries(labels).map(([k,v])=>`<button class="hotTab ${key===k?'active':''}" onclick="entSwitch(${w.id},'${k}')">${v[0]}</button>`).join('')}</div><div class="loading">正在加载 ${labels[key][0]}…</div>`;
+    try{const d=await api(`/api/hot?source=${encodeURIComponent(src)}`);c[src]=d;el.dataset.entCache=JSON.stringify(c);draw(key,d)}catch(e){draw(key,{items:[],home:'#',error:e.message})}
+  };
+  el._entLoad=load;await load('bilibili',false);
+}
+window.entSwitch=async(id,key)=>{const el=document.querySelector(`.widget[data-id="${id}"]`);if(el?._entLoad)await el._entLoad(key,false)};
+window.entRefresh=async id=>{const el=document.querySelector(`.widget[data-id="${id}"]`);if(!el?._entLoad)return;el.dataset.entCache='{}';await el._entLoad('bilibili',true)};
+window.entRandomGame=()=>{const games=[['🐍 贪吃蛇','https://playsnake.org/'],['🦖 恐龙快跑','https://chromedino.com/'],['♟️ 在线五子棋','https://www.playok.com/zh/gomoku/'],['🧩 数独','https://sudoku.com/']];const g=games[Math.floor(Math.random()*games.length)];window.open(g[1],'_blank','noopener')};
+
 function renderAnniversaryWidget(el,w){let c=Object.assign({title:'我们的纪念日',date:''},w.config||{}),d=c.date?new Date(c.date):null,days=d?Math.max(0,Math.floor((Date.now()-d.getTime())/86400000)):null;el.querySelector('.widget-body').innerHTML=`<div class="countTitle">${esc(c.title)}</div><div class="payBig">${days===null?'—':days}<small>${days===null?'':'天'}</small></div><div class="muted">${d?'已经走过的日子':'点击 ⚙️ 设置日期'}</div>`}
 
+
+function renderMyDayWidget(el,w){
+  if(el._myDayTimer)clearInterval(el._myDayTimer);
+  const body=el.querySelector(".widget-body");
+  const pad=n=>String(n).padStart(2,"0");
+  const render=()=>{
+    const now=new Date(), y=now.getFullYear(),m=now.getMonth()+1,d=now.getDate(),h=now.getHours(),mi=now.getMinutes(),se=now.getSeconds();
+    const todos=S.widgets.find(x=>x.widget_key==="todo"), td=(todos?.config?.items||[]), active=td.filter(x=>!x.done).length, done=td.filter(x=>x.done).length;
+    const work=S.widgets.find(x=>x.widget_key==="work"), wc=Object.assign({workStart:"08:30",workEnd:"17:30"},work?.config||{});
+    const hm=t=>{let [a,b]=String(t).split(":").map(Number);return (a||0)*60+(b||0)};
+    const cur=h*60+mi, ws=hm(wc.workStart), we=hm(wc.workEnd);
+    let workText=cur<ws?`距离上班 ${ws-cur} 分钟`:cur<we?`工作中 · 距离下班 ${we-cur} 分钟`:`今天下班啦 🎉`;
+    const cd=S.widgets.find(x=>x.widget_key==="countdown"), cc=cd?.config||{};
+    let cdText=cc.date?(()=>{let t=new Date(cc.date+"T00:00:00"),n=Math.ceil((t-new Date(y,m-1,d))/86400000);return n>=0?`${cc.title||"重要日子"} · ${n} 天`:`${cc.title||"重要日子"} · 已到达`})():"还没有设置倒计时";
+    const pom=S.widgets.find(x=>x.widget_key==="pomodoro"), pc=pom?.config||{};
+    const ps=Number(pc.seconds||1500), pm=Math.floor(ps/60), psec=pad(ps%60);
+    body.innerHTML=`<div class="mydayClock">${pad(h)}:${pad(mi)}<small>:${pad(se)}</small></div><div class="mydayDate">${y}年${m}月${d}日 · ${["周日","周一","周二","周三","周四","周五","周六"][now.getDay()]}</div><div class="mydayGrid"><div><b>✅ ${active}</b><small>待办</small></div><div><b>☑️ ${done}</b><small>已完成</small></div><div><b>🍅 ${pm}:${psec}</b><small>番茄钟</small></div><div><b>📅 ${dayOfYear(now)}</b><small>今年第几天</small></div></div><div class="mydayLine">💼 ${workText}</div><div class="mydayLine">⏳ ${esc(cdText)}</div><div class="mydayBtns"><button class="miniBtn" onclick="document.querySelector('[data-key=todo]')?.scrollIntoView({behavior:'smooth',block:'center'})">打开待办</button><button class="miniBtn" onclick="document.querySelector('[data-key=pomodoro]')?.scrollIntoView({behavior:'smooth',block:'center'})">番茄钟</button><button class="miniBtn" onclick="document.querySelector('[data-key=countdown]')?.scrollIntoView({behavior:'smooth',block:'center'})">倒计时</button></div>`;
+  };
+  render();el._myDayTimer=setInterval(render,1000);
+}
+
 function widgetHtml(w){let meta=WidgetRegistry[w.widget_key]||{title:w.widget_title||"组件",icon:"🧩",desc:"自定义组件"};return `<article class="widget grid-${w.grid_w}-${w.grid_h}" style="--gw:${w.grid_w};--gh:${w.grid_h}" data-id="${w.id}" data-key="${esc(w.widget_key)}"><div class="widget-head"><span class="drag-handle" title="拖动排序">⠿</span><span class="widget-title">${meta.icon} ${esc(w.widget_title)}</span><div class="widget-actions"><button onclick="configWidget(${w.id})" title="设置">⚙</button><button onclick="resizeWidget(${w.id},-1)" title="缩小">−</button><button onclick="resizeWidget(${w.id},1)" title="放大">＋</button><button onclick="removeWidget(${w.id})" title="删除">×</button></div></div><div class="widget-body"></div><span class="resize-handle" title="拖动调整尺寸"></span></article>`}
-async function renderWidgets(){let grid=$("#widgetGrid");grid.innerHTML=S.widgets.map(widgetHtml).join("");for(let el of grid.children){let w=S.widgets.find(x=>x.id==el.dataset.id);if(w.widget_key==="weather")await renderWeatherWidget(el,w);else if(w.widget_key==="calendar")await renderCalendarWidget(el,w);else if(w.widget_key==="work")renderWorkWidget(el,w);else if(w.widget_key==="todo")renderTodoWidget(el,w);else if(w.widget_key==="memo")renderMemoWidget(el,w);else if(w.widget_key==="pomodoro")renderPomodoroWidget(el,w);else if(w.widget_key==="countdown")renderCountdownWidget(el,w);else if(w.widget_key==="worldclock")renderWorldClockWidget(el,w);else if(w.widget_key==="payday")renderPaydayWidget(el,w);else if(w.widget_key==="anniversary")renderAnniversaryWidget(el,w);else if(w.widget_key==="hotsearch")await renderHotSearchWidget(el,w)}bindDragResize()}
+async function renderStocksWidget(el,w){
+  const c=Object.assign({codes:["s_sh000001","s_sz399001","s_sz399006","sh600519","sh601318"]},w.config||{});
+  el.querySelector(".widget-body").innerHTML=`<div class="loading">正在获取行情…</div>`;
+  try{const d=await api("/api/stocks?codes="+encodeURIComponent((c.codes||[]).join(",")));
+    if(!d.items?.length)throw Error("暂无行情数据");
+    const h=d.items.map((x,i)=>{const pct=Number(x.pct)||0;return `<a class="stockItem" href="https://finance.sina.com.cn/realstock/company/${esc(x.code.replace(/^s_/,'').replace(/^(sh|sz)/,''))}/nc.shtml" target="_blank" rel="noopener"><span class="stockRank">${i+1}</span><span class="stockName"><b>${esc(x.name)}</b><small>${esc(x.code)}</small></span><span class="stockPrice">${esc(x.price)}</span><span class="stockPct ${pct>0?'up':pct<0?'down':''}">${pct>0?'+':''}${pct.toFixed(2)}%</span></a>`}).join("");
+    el.querySelector(".widget-body").innerHTML=`<div class="stockHead"><span>自选 / 指数</span><button class="miniBtn" onclick="configWidget(${w.id})">⚙ 设置</button></div><div class="stockList">${h}</div><div class="stockFoot">行情来自公开财经接口，仅供参考</div>`;
+  }catch(e){el.querySelector(".widget-body").innerHTML=`<div class="error">行情获取失败：${esc(e.message)}<br><button class="miniBtn" onclick="configWidget(${w.id})">设置股票</button></div>`}
+}
+
+async function renderWidgets(){let grid=$("#widgetGrid");grid.innerHTML=S.widgets.map(widgetHtml).join("");for(let el of grid.children){let w=S.widgets.find(x=>x.id==el.dataset.id);if(w.widget_key==="weather")await renderWeatherWidget(el,w);else if(w.widget_key==="calendar")await renderCalendarWidget(el,w);else if(w.widget_key==="work")renderWorkWidget(el,w);else if(w.widget_key==="todo")renderTodoWidget(el,w);else if(w.widget_key==="memo")renderMemoWidget(el,w);else if(w.widget_key==="pomodoro")renderPomodoroWidget(el,w);else if(w.widget_key==="countdown")renderCountdownWidget(el,w);else if(w.widget_key==="worldclock")renderWorldClockWidget(el,w);else if(w.widget_key==="payday")renderPaydayWidget(el,w);else if(w.widget_key==="anniversary")renderAnniversaryWidget(el,w);else if(w.widget_key==="hotsearch")await renderHotSearchWidget(el,w);else if(w.widget_key==="infohub")await renderInfoHubWidget(el,w);else if(w.widget_key==="stocks")await renderStocksWidget(el,w);else if(w.widget_key==="entertainment")await renderEntertainmentWidget(el,w);else if(w.widget_key==="myday")renderMyDayWidget(el,w)}bindDragResize()}
 const APP_CACHE_KEY="itab_app_cache_v1";
 function saveLocal(){localStorage.setItem("itab_widgets",JSON.stringify(S.widgets));try{localStorage.setItem(APP_CACHE_KEY,JSON.stringify({savedAt:new Date().toISOString(),categories:S.categories,sites:S.sites,settings:S.settings,widgets:S.widgets}))}catch(e){console.warn("本地缓存保存失败",e)}}
 function loadLocalCache(){try{let d=JSON.parse(localStorage.getItem(APP_CACHE_KEY)||"null");if(!d||!Array.isArray(d.sites)||!Array.isArray(d.categories)||!Array.isArray(d.widgets))return false;Object.assign(S,{categories:d.categories,sites:d.sites,settings:d.settings||null,widgets:d.widgets});return true}catch(e){return false}}
@@ -171,7 +259,7 @@ function startDrag(e,el){
 function startResize(e,el){if(!requireAdmin())return;e.preventDefault();el.setPointerCapture?.(e.pointerId);let w=S.widgets.find(x=>x.id==el.dataset.id),startX=e.clientX,startY=e.clientY,sw=w.grid_w,sh=w.grid_h,meta=WidgetRegistry[w.widget_key]||{sizes:[[1,1],[2,1],[2,2],[3,2]]},move=ev=>{ev.preventDefault();let grid=el.parentElement,gr=grid.getBoundingClientRect(),gap=parseFloat(getComputedStyle(grid).gap)||0,cols=getComputedStyle(grid).gridTemplateColumns.split(" ").length||1,cellW=(gr.width-gap*(cols-1))/cols,cellH=parseFloat(getComputedStyle(grid).gridAutoRows)||100;let dx=Math.round((ev.clientX-startX)/Math.max(1,cellW+gap)),dy=Math.round((ev.clientY-startY)/Math.max(1,cellH+gap));let nw=Math.max(1,Math.min(3,sw+dx)),nh=Math.max(1,Math.min(3,sh+dy));let ok=meta.sizes.some(s=>s[0]===nw&&s[1]===nh);if(ok){el.className=el.className.replace(/grid-\d-\d/,`grid-${nw}-${nh}`);el.style.setProperty("--gw",nw);el.style.setProperty("--gh",nh);el.dataset.tempSize=`${nw}-${nh}`}},up=async()=>{document.removeEventListener("pointermove",move);let size=el.dataset.tempSize;if(size){let [nw,nh]=size.split("-").map(Number);w.grid_w=nw;w.grid_h=nh;delete el.dataset.tempSize;await saveWidget(w)}document.removeEventListener("pointerup",up)};document.addEventListener("pointermove",move,{passive:false});document.addEventListener("pointerup",up,{once:true})}
 
 function widgetChoices(){$("#widgetChoices").innerHTML=Object.entries(WidgetRegistry).map(([key,v])=>`<button class="widgetChoice" type="button" onclick="addWidget('${key}')"><span>${v.icon}</span><div><b>${v.title}</b><small>${v.desc}</small></div></button>`).join("")}
-window.addWidget=async key=>{if(!requireAdmin())return;let meta=WidgetRegistry[key],sizes=meta.sizes[0];let defaults={weather:{city:"当前位置",lat:null,lon:null},calendar:{showLunar:true,showHoliday:true,showStats:true},work:{workStart:"08:30",workEnd:"17:30",dailySalary:300},todo:{items:[],filter:"all"},memo:{text:"",updatedAt:""},pomodoro:{mode:"focus",seconds:1500,running:false},countdown:{title:"重要日子",date:""},worldclock:{},payday:{day:10},anniversary:{title:"我的纪念日",date:""},hotsearch:{source:"baidu"}};let w={widget_key:key,widget_title:meta.title,grid_w:sizes[0],grid_h:sizes[1],sort_order:S.widgets.length+1,config:defaults[key]||{}};try{let saved=await api("/api/widgets",{method:"POST",body:JSON.stringify(w)});S.widgets.push(saved);widgetDlg.close();renderWidgets()}catch(e){alert(e.message)}};
+window.addWidget=async key=>{if(!requireAdmin())return;let meta=WidgetRegistry[key],sizes=meta.sizes[0];let defaults={weather:{city:"当前位置",lat:null,lon:null},calendar:{showLunar:true,showHoliday:true,showStats:true},work:{workStart:"08:30",workEnd:"17:30",dailySalary:300},todo:{items:[],filter:"all"},memo:{text:"",updatedAt:""},pomodoro:{mode:"focus",seconds:1500,running:false},countdown:{title:"重要日子",date:""},worldclock:{},payday:{day:10},anniversary:{title:"我的纪念日",date:""},hotsearch:{source:"baidu"},infohub:{source:"baidu"},stocks:{codes:["s_sh000001","s_sz399001","s_sz399006","sh600519","sh601318"]},entertainment:{source:"bilibili"},myday:{}};let w={widget_key:key,widget_title:meta.title,grid_w:sizes[0],grid_h:sizes[1],sort_order:S.widgets.length+1,config:defaults[key]||{}};try{let saved=await api("/api/widgets",{method:"POST",body:JSON.stringify(w)});S.widgets.push(saved);widgetDlg.close();renderWidgets()}catch(e){alert(e.message)}};
 window.configWidget=async id=>{let w=S.widgets.find(x=>x.id===id);if(!w||!requireAdmin())return;$("#configTitle").textContent=(WidgetRegistry[w.widget_key]?.icon||"🧩")+" "+w.widget_title;let c=w.config||{},h="";
 if(w.widget_key==="weather")h=`<label>城市<input id="wcCity" value="${esc(c.city||"")}" placeholder="例如：长春、北京、上海"></label><div id="cityResults"></div><input type="hidden" id="wcLat" value="${c.lat??""}"><input type="hidden" id="wcLon" value="${c.lon??""}"><button type="button" class="miniBtn" id="citySearchBtn">🔎 搜索城市</button>`;
 else if(w.widget_key==="calendar")h=`<label><input type="checkbox" id="showLunar" ${c.showLunar!==false?"checked":""}> 显示农历</label><label><input type="checkbox" id="showHoliday" ${c.showHoliday!==false?"checked":""}> 显示节假日</label><label><input type="checkbox" id="showStats" ${c.showStats!==false?"checked":""}> 显示年度信息</label><p class="muted">支持月份切换、回到今天、农历、周数和年度第几天。</p>`;
@@ -182,9 +270,25 @@ else if(w.widget_key==="anniversary")h=`<label>纪念日名称<input id="annTitl
 else if(w.widget_key==="memo")h=`<p class="muted">便签正文直接在组件里编辑，点击“☁️ 保存”同步到 Neon。</p>`;else h=`<p class="muted">这个组件暂时没有需要配置的项目，直接保存即可。</p>`;
 $("#configBody").innerHTML=h;configDlg.showModal();if(w.widget_key==="weather")$("#citySearchBtn").onclick=async()=>{try{let rs=await citySearch($("#wcCity").value.trim());$("#cityResults").innerHTML=rs.map((x,i)=>`<button type="button" class="cityResult" onclick="chooseCity(${i})">${esc(x.name)} · ${esc(x.admin1||"")} · ${esc(x.country||"")}</button>`).join("");window._cityResults=rs}catch(e){alert(e.message)}};window._configWidgetId=id};
 window.chooseCity=i=>{let x=window._cityResults?.[i];if(!x)return;$("#wcCity").value=x.name+((x.admin1)?" · "+x.admin1:"");$("#wcLat").value=x.latitude;$("#wcLon").value=x.longitude;$("#cityResults").innerHTML="<div class='muted'>已选择该城市</div>"};
-$("#configForm").onsubmit=async e=>{e.preventDefault();let w=S.widgets.find(x=>x.id===window._configWidgetId);if(!w)return;let c=w.config||{};if(w.widget_key==="weather")w.config={city:$("#wcCity").value||"当前位置",lat:$("#wcLat").value?+$("#wcLat").value:null,lon:$("#wcLon").value?+$("#wcLon").value:null};else if(w.widget_key==="calendar")w.config={showLunar:$("#showLunar").checked,showHoliday:$("#showHoliday").checked,showStats:$("#showStats").checked};else if(w.widget_key==="work")w.config={workStart:$("#workStart").value,workEnd:$("#workEnd").value,dailySalary:+$("#dailySalary").value||0};else if(w.widget_key==="countdown")w.config={title:$("#countTitle").value.trim()||"重要日子",date:$("#countDate").value};else if(w.widget_key==="payday")w.config={day:Math.max(1,Math.min(28,+$("#payDay").value||10))};else if(w.widget_key==="anniversary")w.config={title:$("#annTitle").value.trim()||"我的纪念日",date:$("#annDate").value};else if(w.widget_key==="hotsearch")w.config={source:$("#hotSource").value};else if(w.widget_key==="memo")w.config=Object.assign({},w.config||{},{text:w.config?.text||"",updatedAt:w.config?.updatedAt||""});await saveWidget(w);configDlg.close()};
+$("#configForm").onsubmit=async e=>{e.preventDefault();let w=S.widgets.find(x=>x.id===window._configWidgetId);if(!w)return;let c=w.config||{};if(w.widget_key==="weather")w.config={city:$("#wcCity").value||"当前位置",lat:$("#wcLat").value?+$("#wcLat").value:null,lon:$("#wcLon").value?+$("#wcLon").value:null};else if(w.widget_key==="calendar")w.config={showLunar:$("#showLunar").checked,showHoliday:$("#showHoliday").checked,showStats:$("#showStats").checked};else if(w.widget_key==="work")w.config={workStart:$("#workStart").value,workEnd:$("#workEnd").value,dailySalary:+$("#dailySalary").value||0};else if(w.widget_key==="countdown")w.config={title:$("#countTitle").value.trim()||"重要日子",date:$("#countDate").value};else if(w.widget_key==="payday")w.config={day:Math.max(1,Math.min(28,+$("#payDay").value||10))};else if(w.widget_key==="anniversary")w.config={title:$("#annTitle").value.trim()||"我的纪念日",date:$("#annDate").value};else if(w.widget_key==="hotsearch")w.config={source:$("#hotSource").value};else if(w.widget_key==="stocks")w.config={codes:$("#stockCodes").value.split(/[,\s]+/).map(x=>x.trim()).filter(Boolean).slice(0,12)};else if(w.widget_key==="memo")w.config=Object.assign({},w.config||{},{text:w.config?.text||"",updatedAt:w.config?.updatedAt||""});await saveWidget(w);configDlg.close()};
 
-window.load=async function load(){try{let d=await api("/api/data"),widgets=await api("/api/widgets");Object.assign(S,d,{widgets,folders:d.folders||[]});cats();renderSites();$("#bgurl").value=S.settings?.background_url||"";$("#defengine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";$("#engine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";if(S.settings?.background_url)$("#bg").style.backgroundImage=`url("${S.settings.background_url}")`;saveLocal();setNetStatus(false);await renderWidgets()}catch(e){if(loadLocalCache()){cats();renderSites();$("#bgurl").value=S.settings?.background_url||"";$("#defengine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";$("#engine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";if(S.settings?.background_url)$("#bg").style.backgroundImage=`url("${S.settings.background_url}")`;setNetStatus(true);await renderWidgets();let age=cacheAge();console.warn("已切换到本地缓存",age)}else{$("#sites").innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:40px">暂时无法连接云端，也没有可用的本地缓存。<br><small>${esc(e.message)}</small></div>`;setNetStatus(true)}}}
+function syncLocalStats(){
+  let savedAt='暂无';try{let d=JSON.parse(localStorage.getItem(APP_CACHE_KEY)||'null');if(d?.savedAt)savedAt=new Date(d.savedAt).toLocaleString('zh-CN')}catch(e){}
+  return savedAt;
+}
+function renderSyncCenter(){
+  const online=!navigator.onLine;
+  $('#syncState').innerHTML=online?'<b>☁️ 云端可用</b><span>当前页面可以读取 Neon 云端数据</span>':'<b>📴 当前离线</b><span>仅可使用已有本地缓存</span>';
+  $('#syncStats').innerHTML=`<div><b>${S.categories.length}</b><small>分类</small></div><div><b>${S.sites.length}</b><small>网站</small></div><div><b>${(S.folders||[]).length}</b><small>文件夹</small></div><div><b>${S.widgets.length}</b><small>小组件</small></div><div><b>${S.settings?.theme||'glass'}</b><small>主题</small></div><div><b>${syncLocalStats()}</b><small>本地缓存</small></div>`;
+}
+window.openSyncCenter=()=>{renderSyncCenter();syncDlg.showModal()};
+async function cloudRefresh(){
+  const btn=$('#syncRefresh');btn.disabled=true;btn.textContent='⏳ 正在同步…';
+  try{let d=await api('/api/data'),widgets=await api('/api/widgets');Object.assign(S,d,{widgets,folders:d.folders||[]});applyTheme(S.settings?.theme||'glass');cats();renderSites();if(S.settings?.background_url)$('#bg').style.backgroundImage=`url("${S.settings.background_url}")`;else $('#bg').style.backgroundImage='';saveLocal();await renderWidgets();setNetStatus(false);renderSyncCenter();alert('云端数据已刷新到当前页面。')}catch(e){alert('同步失败：'+e.message)}finally{btn.disabled=false;btn.textContent='🔄 从云端刷新'}
+}
+window.exportCloudBackup=async()=>{try{if(!navigator.onLine)throw Error('当前离线');let d=await api('/api/backup');let blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='LoneWalkerLee-iTab-cloud-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert(e.message)}};
+window.clearLocalCache=()=>{if(!confirm('只清除本浏览器的本地缓存，不会删除云端 Neon 数据。确定吗？'))return;localStorage.removeItem(APP_CACHE_KEY);localStorage.removeItem('itab_widgets');renderSyncCenter();alert('本地缓存已清除，云端数据不受影响。')};
+window.load=async function load(){try{let d=await api("/api/data"),widgets=await api("/api/widgets");Object.assign(S,d,{widgets,folders:d.folders||[]});applyTheme(S.settings?.theme||"glass");cats();renderSites();$("#bgurl").value=S.settings?.background_url||"";$("#defengine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";$("#engine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";if(S.settings?.background_url)$("#bg").style.backgroundImage=`url("${S.settings.background_url}")`;saveLocal();setNetStatus(false);await renderWidgets()}catch(e){if(loadLocalCache()){applyTheme(S.settings?.theme||"glass");cats();renderSites();$("#bgurl").value=S.settings?.background_url||"";$("#defengine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";$("#engine").value=S.settings?.search_engine||"https://www.bing.com/search?q=";if(S.settings?.background_url)$("#bg").style.backgroundImage=`url("${S.settings.background_url}")`;setNetStatus(true);await renderWidgets();let age=cacheAge();console.warn("已切换到本地缓存",age)}else{$("#sites").innerHTML=`<div style="grid-column:1/-1;text-align:center;padding:40px">暂时无法连接云端，也没有可用的本地缓存。<br><small>${esc(e.message)}</small></div>`;setNetStatus(true)}}}
 async function tick(){let d=new Date(),p=n=>String(n).padStart(2,"0");$("#clock").textContent=p(d.getHours())+":"+p(d.getMinutes());$("#date").textContent=d.toLocaleDateString("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"long"});document.querySelectorAll(".widget").forEach(async el=>{let id=+el.dataset.id,w=S.widgets.find(x=>x.id===id);if(!w)return;if(w.widget_key==="work")renderWorkWidget(el,w);else if(w.widget_key==="pomodoro"&&w.config?.running){w.config.seconds=Math.max(0,(Number(w.config.seconds)||0)-1);if(w.config.seconds<=0){w.config.running=false;w.config.mode=w.config.mode==="focus"?"break":"focus";w.config.seconds=w.config.mode==="focus"?1500:300;savePomo(w)}else renderPomodoroWidget(el,w)}else if(w.widget_key==="countdown")renderCountdownWidget(el,w);else if(w.widget_key==="worldclock")renderWorldClockWidget(el,w);else if(w.widget_key==="payday")renderPaydayWidget(el,w);else if(w.widget_key==="anniversary")renderAnniversaryWidget(el,w);else if(w.widget_key==="hotsearch"){ /* 热搜不随时钟每秒重载，避免闪烁和重复请求 */ }})}
 
 window.autoFillFavicons=async()=>{if(!requireAdmin())return;let list=S.sites.filter(s=>!isIconUrl(s.icon));if(!list.length){alert("目前没有需要补全的网站图标。\n已有图片 URL 的图标不会被覆盖。");return}if(!confirm(`将为 ${list.length} 个网站生成自动 favicon 图标地址，已有图片 URL 不会修改。\n继续吗？`))return;let ok=0;for(let site of list){let f=faviconUrl(site.url);if(!f)continue;try{let saved=await api("/api/sites/"+site.id,{method:"PUT",body:JSON.stringify({...site,icon:f})});Object.assign(site,saved);ok++}catch(e){console.warn("favicon 更新失败",site,e)}}renderSites();alert(`完成：${ok}/${list.length} 个网站已启用自动图标。`)};
@@ -218,7 +322,10 @@ function renderFolderList(){let box=$("#folderList");if(!S.folders.length){box.i
 window.deleteFolder=async id=>{if(!requireAdmin())return;let f=S.folders.find(x=>x.id===id);if(!f)return;if(!confirm(`删除文件夹「${f.name}」？其中的网站不会删除，只会变成未分类文件夹。`))return;try{await api("/api/folders/"+id,{method:"DELETE"});S.folders=S.folders.filter(x=>x.id!==id);S.sites.forEach(s=>{if(s.folder_id===id)s.folder_id=null});if(S.folder===id)S.folder=null;renderFolderList();cats();renderSites();saveLocal()}catch(e){alert(e.message)}};
 $("#folderBtn").onclick=openFolders;
 $("#folderForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;let name=$("#folderName").value.trim();if(!name)return;try{let f=await api("/api/folders",{method:"POST",body:JSON.stringify({name})});S.folders.push(f);$("#folderName").value="";renderFolderList();cats();saveLocal()}catch(x){alert(x.message)}};
-$("#settingsBtn").onclick=()=>setdlg.showModal();$("#setForm").onsubmit=async e=>{e.preventDefault();try{await api("/api/settings",{method:"POST",body:JSON.stringify({background_url:$("#bgurl").value,search_engine:$("#defengine").value,theme:"glass"})});setdlg.close();load()}catch(x){alert(x.message)}};
+function openThemeCenter(){if(!requireAdmin())return;let cur=S.settings?.theme||"glass";$("#themeChoices").innerHTML=Object.entries(ThemeRegistry).map(([k,v])=>`<button type="button" class="themeChoice ${cur===k?"active":""}" data-theme-key="${k}"><span>${v.icon}</span><div><b>${v.name}</b><small>${v.desc}</small></div></button>`).join("");$("#themeChoices").querySelectorAll(".themeChoice").forEach(b=>b.onclick=()=>{let k=b.dataset.themeKey;applyTheme(k);$("#themeChoices").querySelectorAll(".themeChoice").forEach(x=>x.classList.toggle("active",x===b));$("#themeCurrent").textContent="当前主题："+ThemeRegistry[k].name;S.settings=S.settings||{};S.settings.theme=k;saveLocal()});$("#themeCurrent").textContent="当前主题："+(ThemeRegistry[cur]?.name||"玻璃幻境");themeDlg.showModal()}
+$("#themeBtn").onclick=openThemeCenter;$("#syncBtn").onclick=openSyncCenter;$("#syncRefresh").onclick=cloudRefresh;$("#syncExport").onclick=exportCloudBackup;$("#syncClearLocal").onclick=clearLocalCache;
+$("#settingsBtn").onclick=()=>setdlg.showModal();$("#setForm").onsubmit=async e=>{e.preventDefault();try{await api("/api/settings",{method:"POST",body:JSON.stringify({background_url:$("#bgurl").value,search_engine:$("#defengine").value,theme:S.settings?.theme||"glass"})});setdlg.close();load()}catch(x){alert(x.message)}};
+$("#themeApplyBtn").onclick=async()=>{if(!requireAdmin())return;try{await api("/api/settings",{method:"POST",body:JSON.stringify({background_url:S.settings?.background_url||$("#bgurl").value,search_engine:S.settings?.search_engine||$("#defengine").value,theme:S.settings?.theme||"glass"})});themeDlg.close();load()}catch(e){alert(e.message)}};
 $("#addWidgetBtn").onclick=()=>{widgetChoices();widgetDlg.showModal()};
 $("#weatherBtn").onclick=()=>document.querySelector(`[data-key="weather"]`)?.scrollIntoView({behavior:"smooth",block:"center"});
 
@@ -226,3 +333,17 @@ window.addEventListener("online",()=>{setNetStatus(false);load()});
 window.addEventListener("offline",()=>setNetStatus(true));
 if(!navigator.onLine)setNetStatus(true);
 tick();setInterval(tick,1000);load();
+
+
+// 5.20 Mobile navigation
+(function(){
+  const nav=document.getElementById("mobileNav"); if(!nav)return;
+  nav.querySelectorAll("button").forEach(btn=>btn.addEventListener("click",()=>{
+    const k=btn.dataset.nav;
+    if(k==="home") window.scrollTo({top:0,behavior:"smooth"});
+    else if(k==="search"){ const q=document.getElementById("query"); window.scrollTo({top:0,behavior:"smooth"}); setTimeout(()=>q?.focus(),250); }
+    else if(k==="widgets") document.getElementById("widgetGrid")?.scrollIntoView({behavior:"smooth",block:"start"});
+    else if(k==="sites") document.getElementById("sites")?.scrollIntoView({behavior:"smooth",block:"start"});
+    else if(k==="settings") document.getElementById("settingsBtn")?.click();
+  }));
+})();
